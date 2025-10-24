@@ -1,5 +1,7 @@
 const tencentcloud = require("tencentcloud-sdk-nodejs-lke");
 const COS = require('cos-nodejs-sdk-v5');
+const multiparty = require('multiparty');
+const fs = require('fs');
 
 // 配置常量
 const REGION = "ap-guangzhou";
@@ -67,57 +69,6 @@ async function uploadFileToCOS(fileBuffer, credentials) {
     });
 }
 
-// 解析 multipart/form-data（简化版）
-async function parseMultipartForm(req) {
-    return new Promise((resolve, reject) => {
-        const chunks = [];
-        req.on('data', chunk => chunks.push(chunk));
-        req.on('end', () => {
-            try {
-                const buffer = Buffer.concat(chunks);
-                const boundary = req.headers['content-type'].split('boundary=')[1];
-                
-                // 简单解析：找到文件数据部分
-                const boundaryBuffer = Buffer.from(`--${boundary}`);
-                const parts = [];
-                let start = 0;
-                
-                while (true) {
-                    const index = buffer.indexOf(boundaryBuffer, start);
-                    if (index === -1) break;
-                    if (start > 0) {
-                        parts.push(buffer.slice(start, index));
-                    }
-                    start = index + boundaryBuffer.length;
-                }
-                
-                // 找到文件部分
-                for (const part of parts) {
-                    const headerEnd = part.indexOf('\r\n\r\n');
-                    if (headerEnd === -1) continue;
-                    
-                    const headers = part.slice(0, headerEnd).toString();
-                    if (headers.includes('filename=')) {
-                        const fileData = part.slice(headerEnd + 4, part.length - 2);
-                        
-                        // 提取文件名
-                        const filenameMatch = headers.match(/filename="([^"]+)"/);
-                        const filename = filenameMatch ? filenameMatch[1] : 'image.jpg';
-                        
-                        resolve({ buffer: fileData, filename });
-                        return;
-                    }
-                }
-                
-                reject(new Error('No file found in request'));
-            } catch (error) {
-                reject(error);
-            }
-        });
-        req.on('error', reject);
-    });
-}
-
 module.exports = async (req, res) => {
     // 处理 CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -133,45 +84,51 @@ module.exports = async (req, res) => {
     }
 
     try {
-        console.log('📥 收到上传请求');
-        console.log('Content-Type:', req.headers['content-type']);
-        
-        // 检查环境变量
-        if (!SECRET_ID || !SECRET_KEY || !BOT_BIZ_ID) {
-            console.error('❌ 环境变量未配置');
-            return res.status(500).json({ error: '服务器配置错误：缺少环境变量' });
-        }
-        
-        // 解析文件
-        const { buffer: fileBuffer, filename } = await parseMultipartForm(req);
-        console.log('📁 文件名:', filename, '大小:', fileBuffer.length, 'bytes');
-        
-        const fileExt = filename.substring(filename.lastIndexOf('.')).toLowerCase();
-        
-        // 获取临时密钥
-        console.log('🔑 获取临时密钥...');
-        const credentials = await getTemporaryCredentials(
-            BOT_BIZ_ID,
-            fileExt,
-            true,
-            TYPE_KEY_REALTIME
-        );
-        
-        // 上传到 COS
-        console.log('☁️ 上传到 COS...');
-        const result = await uploadFileToCOS(fileBuffer, credentials);
-        
-        console.log('✅ 上传成功:', result.url);
-        return res.status(200).json({
-            success: true,
-            url: result.url
+        // 解析 multipart/form-data
+        const form = new multiparty.Form();
+
+        form.parse(req, async (err, fields, files) => {
+            if (err) {
+                console.error('Parse error:', err);
+                return res.status(500).json({ error: err.message });
+            }
+
+            const fileArray = files.file;
+            if (!fileArray || fileArray.length === 0) {
+                return res.status(400).json({ error: '没有文件' });
+            }
+
+            const file = fileArray[0];
+            const fileBuffer = fs.readFileSync(file.path);
+            const fileName = file.originalFilename;
+            const fileExt = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
+
+            try {
+                // 获取临时密钥
+                const credentials = await getTemporaryCredentials(
+                    BOT_BIZ_ID,
+                    fileExt,
+                    true,
+                    TYPE_KEY_REALTIME
+                );
+
+                // 上传到 COS
+                const result = await uploadFileToCOS(fileBuffer, credentials);
+
+                // 清理临时文件
+                fs.unlinkSync(file.path);
+
+                return res.status(200).json({
+                    success: true,
+                    url: result.url
+                });
+            } catch (uploadError) {
+                console.error('Upload error:', uploadError);
+                return res.status(500).json({ error: uploadError.message });
+            }
         });
-        
     } catch (error) {
-        console.error('❌ 上传错误:', error);
-        return res.status(500).json({ 
-            error: error.message,
-            details: error.stack
-        });
+        console.error('Handler error:', error);
+        return res.status(500).json({ error: error.message });
     }
 };
