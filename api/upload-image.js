@@ -1,6 +1,7 @@
 const tencentcloud = require("tencentcloud-sdk-nodejs-lke");
 const COS = require('cos-nodejs-sdk-v5');
 const multiparty = require('multiparty');
+const fs = require('fs');
 
 // 配置常量
 const REGION = "ap-guangzhou";
@@ -68,14 +69,7 @@ async function uploadFileToCOS(fileBuffer, credentials) {
     });
 }
 
-// 禁用 body parser
-export const config = {
-    api: {
-        bodyParser: false,
-    },
-};
-
-export default async function handler(req, res) {
+module.exports = async (req, res) => {
     // 处理 CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -105,7 +99,6 @@ export default async function handler(req, res) {
             }
 
             const file = fileArray[0];
-            const fs = require('fs');
             const fileBuffer = fs.readFileSync(file.path);
             const fileName = file.originalFilename;
             const fileExt = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
@@ -138,4 +131,4 @@ export default async function handler(req, res) {
         console.error('Handler error:', error);
         return res.status(500).json({ error: error.message });
     }
-}
+};
