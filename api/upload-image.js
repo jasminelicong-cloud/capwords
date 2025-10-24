@@ -1,11 +1,9 @@
-const tencentcloud = require("tencentcloud-sdk-nodejs");
+const tencentcloud = require("tencentcloud-sdk-nodejs-lke");
 const COS = require('cos-nodejs-sdk-v5');
-const formidable = require('formidable');
-const fs = require('fs');
+const multiparty = require('multiparty');
 
 // 配置常量
 const REGION = "ap-guangzhou";
-const ENDPOINT = "lke.tencentcloudapi.com";
 const TYPE_KEY_REALTIME = "realtime";
 
 // 从环境变量读取配置
@@ -15,21 +13,14 @@ const BOT_BIZ_ID = process.env.BOT_BIZ_ID;
 
 // 获取临时密钥
 async function getTemporaryCredentials(botBizId, fileType, isPublic, typeKey) {
-    const CommonClient = tencentcloud.common.CommonClient;
-    const clientConfig = {
+    const client = new tencentcloud.lke.v20231130.Client({
         credential: {
             secretId: SECRET_ID,
             secretKey: SECRET_KEY,
         },
         region: REGION,
-        profile: {
-            httpProfile: {
-                endpoint: ENDPOINT,
-            },
-        },
-    };
+    });
 
-    const client = new CommonClient("lke", "2023-11-30", clientConfig);
     const params = {
         BotBizId: botBizId,
         FileType: fileType,
@@ -37,26 +28,22 @@ async function getTemporaryCredentials(botBizId, fileType, isPublic, typeKey) {
         IsPublic: isPublic
     };
 
-    const response = await client.call("DescribeStorageCredential", params);
+    const response = await client.DescribeStorageCredential(params);
     const credentials = response.Credentials;
-    const uploadPath = response.UploadPath;
-    const bucket = response.Bucket;
-    const region = response.Region;
-    const cosType = response.Type;
 
     return {
         TmpSecretId: credentials.TmpSecretId,
         TmpSecretKey: credentials.TmpSecretKey,
         Token: credentials.Token,
-        UploadPath: uploadPath,
-        Bucket: bucket,
-        Region: region,
-        Type: cosType
+        UploadPath: response.UploadPath,
+        Bucket: response.Bucket,
+        Region: response.Region,
+        Type: response.Type
     };
 }
 
 // 上传文件到 COS
-async function uploadFileToCOS(fileBuffer, fileName, credentials) {
+async function uploadFileToCOS(fileBuffer, credentials) {
     const cos = new COS({
         SecretId: credentials.TmpSecretId,
         SecretKey: credentials.TmpSecretKey,
@@ -75,71 +62,80 @@ async function uploadFileToCOS(fileBuffer, fileName, credentials) {
             } else {
                 const bucketUrl = `https://${credentials.Bucket}.${credentials.Type}.${credentials.Region}.myqcloud.com`;
                 const cosUrl = `${bucketUrl}${credentials.UploadPath}`;
-                resolve({
-                    url: cosUrl,
-                    cosPath: credentials.UploadPath,
-                    fileName: fileName
-                });
+                resolve({ url: cosUrl });
             }
         });
     });
 }
 
-module.exports = async (req, res) => {
+// 禁用 body parser
+export const config = {
+    api: {
+        bodyParser: false,
+    },
+};
+
+export default async function handler(req, res) {
     // 处理 CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', '*');
 
     if (req.method === 'OPTIONS') {
-        res.status(200).end();
-        return;
+        return res.status(200).end();
     }
 
     if (req.method !== 'POST') {
-        res.status(405).json({ error: 'Method not allowed' });
-        return;
+        return res.status(405).json({ error: 'Method not allowed' });
     }
 
     try {
         // 解析 multipart/form-data
-        const form = formidable({ multiples: false });
-        
+        const form = new multiparty.Form();
+
         form.parse(req, async (err, fields, files) => {
             if (err) {
-                res.status(500).json({ error: err.message });
-                return;
+                console.error('Parse error:', err);
+                return res.status(500).json({ error: err.message });
             }
 
-            const file = files.file;
-            if (!file) {
-                res.status(400).json({ error: '没有文件' });
-                return;
+            const fileArray = files.file;
+            if (!fileArray || fileArray.length === 0) {
+                return res.status(400).json({ error: '没有文件' });
             }
 
-            // 读取文件
-            const fileBuffer = fs.readFileSync(file.filepath);
+            const file = fileArray[0];
+            const fs = require('fs');
+            const fileBuffer = fs.readFileSync(file.path);
             const fileName = file.originalFilename;
             const fileExt = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
 
-            // 获取临时密钥
-            const credentials = await getTemporaryCredentials(
-                BOT_BIZ_ID,
-                fileExt,
-                true,
-                TYPE_KEY_REALTIME
-            );
+            try {
+                // 获取临时密钥
+                const credentials = await getTemporaryCredentials(
+                    BOT_BIZ_ID,
+                    fileExt,
+                    true,
+                    TYPE_KEY_REALTIME
+                );
 
-            // 上传到 COS
-            const result = await uploadFileToCOS(fileBuffer, fileName, credentials);
+                // 上传到 COS
+                const result = await uploadFileToCOS(fileBuffer, credentials);
 
-            res.status(200).json({
-                success: true,
-                imageUrl: result.url,
-                cosPath: result.cosPath
-            });
+                // 清理临时文件
+                fs.unlinkSync(file.path);
+
+                return res.status(200).json({
+                    success: true,
+                    url: result.url
+                });
+            } catch (uploadError) {
+                console.error('Upload error:', uploadError);
+                return res.status(500).json({ error: uploadError.message });
+            }
         });
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        console.error('Handler error:', error);
+        return res.status(500).json({ error: error.message });
     }
-};
+}
