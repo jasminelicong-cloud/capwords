@@ -562,8 +562,10 @@
                                 console.log(`🖼️ 压缩质量: ${quality.toFixed(2)}, 大小: ${sizeMB.toFixed(2)}MB`);
                                 
                                 if (sizeMB <= maxSizeMB || quality <= 0.1) {
-                                    // 创建新的 File 对象
-                                    const compressedFile = new File([blob], file.name, {
+                                    // 创建新的 File 对象，确保文件名是 .jpg 扩展名
+                                    const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
+                                    const newFileName = `${originalName}.jpg`;
+                                    const compressedFile = new File([blob], newFileName, {
                                         type: 'image/jpeg',
                                         lastModified: Date.now()
                                     });

@@ -101,7 +101,21 @@ module.exports = async (req, res) => {
             const file = fileArray[0];
             const fileBuffer = fs.readFileSync(file.path);
             const fileName = file.originalFilename;
-            const fileExt = fileName.substring(fileName.lastIndexOf('.')).toLowerCase();
+            
+            // 获取文件扩展名（不带点号）
+            let fileExt = fileName.substring(fileName.lastIndexOf('.') + 1).toLowerCase();
+            
+            // 支持的图片格式
+            const supportedFormats = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp'];
+            if (!supportedFormats.includes(fileExt)) {
+                fileExt = 'jpg'; // 默认使用 jpg
+            }
+            
+            console.log('📁 文件信息:', {
+                originalName: fileName,
+                extension: fileExt,
+                size: `${(fileBuffer.length / 1024 / 1024).toFixed(2)}MB`
+            });
 
             try {
                 // 获取临时密钥
