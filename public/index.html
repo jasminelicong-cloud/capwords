@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CapWords - AI 语言学习</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #FFE5EC 0%, #FFF0F5 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* 顶部导航 */
+        .navbar {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 20px 30px;
+            border-radius: 20px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 28px;
+            font-weight: 700;
+            color: #FF6B9D;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .stats {
+            display: flex;
+            gap: 30px;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 32px;
+            font-weight: 700;
+            color: #FF6B9D;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        /* 相机按钮 */
+        .camera-section {
+            text-align: center;
+            margin: 50px 0;
+        }
+
+        .camera-btn {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #FF6B9D, #C44569);
+            border: none;
+            font-size: 48px;
+            cursor: pointer;
+            box-shadow: 0 10px 30px rgba(255, 107, 157, 0.4);
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .camera-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 15px 40px rgba(255, 107, 157, 0.6);
+        }
+
+        .camera-btn:active {
+            transform: scale(0.95);
+        }
+
+        .camera-hint {
+            margin-top: 20px;
+            font-size: 16px;
+            color: #666;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        /* 加载动画 */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #FFE5EC;
+            border-top-color: #FF6B9D;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-words {
+            margin-top: 20px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.5em;
+            color: #FF6B9D;
+            font-weight: 600;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .word-item {
+            animation: wordFade 0.8s ease-in-out;
+        }
+
+        @keyframes wordFade {
+            0% {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            50% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+        }
+
+        /* 卡片网格 */
+        .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            transition: transform 0.3s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+        }
+
+        /* 扫描动画 */
+        @keyframes scan {
+            0% { transform: translateY(-100%); }
+            100% { transform: translateY(100%); }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .scan-effect {
+            position: relative;
+            overflow: hidden;
+        }
+
+        .scan-effect::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(
+                to bottom,
+                transparent 0%,
+                rgba(255, 107, 157, 0.3) 50%,
+                transparent 100%
+            );
+            animation: scan 2s ease-in-out;
+            pointer-events: none;
+        }
+
+        .card-image {
+            width: 100%;
+            height: 300px;
+            object-fit: cover;
+            background: #f0f0f0;
+        }
+
+        .card-content {
+            padding: 25px;
+        }
+
+        .card-text {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.4em;
+            color: #000;
+            line-height: 1.6;
+            margin-bottom: 18px;
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        .card-sentence {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 1.1em;
+            color: #666;
+            line-height: 1.7;
+            animation: fadeIn 0.8s ease-out;
+            margin-bottom: 20px;
+        }
+
+        .card-actions {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+
+        .action-btn {
+            background: none;
+            border: none;
+            font-size: 1.5em;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .action-btn:hover {
+            transform: scale(1.2);
+        }
+
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 80px 20px;
+            color: #999;
+        }
+
+        .empty-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+
+        .empty-text {
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+
+        /* 通知 */
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+            animation: slideIn 0.3s;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(400px);
+                opacity: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 导航栏 -->
+        <div class="navbar">
+            <div class="logo">
+                📚 CapWords
+            </div>
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-number" id="totalCount">0</div>
+                    <div class="stat-label">学习词汇</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="todayCount">0</div>
+                    <div class="stat-label">今日新增</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 相机按钮 -->
+        <div class="camera-section">
+            <button class="camera-btn" id="cameraBtn">📷</button>
+            <p class="camera-hint">点击拍照，开始学习</p>
+            <input type="file" id="fileInput" accept="image/*">
+        </div>
+
+        <!-- 加载动画 -->
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>卡片生成中……等待时间，我们来背背单词呀！</p>
+            <div class="loading-words" id="loadingWords"></div>
+        </div>
+
+        <!-- 卡片网格 -->
+        <div class="cards-grid" id="cardsGrid"></div>
+
+        <!-- 空状态 -->
+        <div class="empty-state" id="emptyState">
+            <div class="empty-icon">🎨</div>
+            <p class="empty-text">还没有学习卡片</p>
+            <p class="camera-hint">点击上方相机按钮，拍摄物品开始学习吧！</p>
+        </div>
+    </div>
+
+    <script>
+        // 配置
+        const BACKEND_URL = '/api';
+        
+        // 数据存储
+        let cards = [];
+        let todayCount = 0;
+
+        // DOM 元素
+        const cameraBtn = document.getElementById('cameraBtn');
+        const fileInput = document.getElementById('fileInput');
+        const loading = document.getElementById('loading');
+        const loadingWords = document.getElementById('loadingWords');
+        const cardsGrid = document.getElementById('cardsGrid');
+        const emptyState = document.getElementById('emptyState');
+        const totalCountEl = document.getElementById('totalCount');
+        const todayCountEl = document.getElementById('todayCount');
+
+        // 单词池 - 常见英文单词
+        const wordPool = [
+            'apple', 'banana', 'cat', 'dog', 'elephant', 'flower', 'guitar', 'house',
+            'island', 'jacket', 'kite', 'lemon', 'mountain', 'notebook', 'ocean', 'piano',
+            'queen', 'rainbow', 'sunset', 'tree', 'umbrella', 'violin', 'waterfall', 'xylophone',
+            'yacht', 'zebra', 'adventure', 'beautiful', 'creative', 'delicious', 'elegant', 'fantastic',
+            'gorgeous', 'harmony', 'inspire', 'journey', 'knowledge', 'liberty', 'miracle', 'nature',
+            'opportunity', 'passion', 'quality', 'respect', 'serenity', 'treasure', 'unique', 'victory',
+            'wisdom', 'excellence', 'butterfly', 'chocolate', 'diamond', 'energy', 'freedom', 'happiness'
+        ];
+
+        let wordInterval = null;
+
+        // 初始化
+        window.addEventListener('load', () => {
+            loadCards();
+            updateStats();
+            
+            // 绑定事件
+            cameraBtn.addEventListener('click', () => {
+                console.log('📷 相机按钮被点击');
+                fileInput.click();
+            });
+            
+            fileInput.addEventListener('change', handleImageUpload);
+            
+            console.log('✅ 页面初始化完成');
+        });
+
+        // 加载卡片
+        function loadCards() {
+            const saved = localStorage.getItem('capwords_cards');
+            if (saved) {
+                cards = JSON.parse(saved);
+                renderCards();
+            }
+            
+            const today = new Date().toDateString();
+            const savedToday = localStorage.getItem('capwords_today');
+            if (savedToday === today) {
+                todayCount = parseInt(localStorage.getItem('capwords_today_count') || '0');
+            } else {
+                todayCount = 0;
+                localStorage.setItem('capwords_today', today);
+                localStorage.setItem('capwords_today_count', '0');
+            }
+        }
+
+        // 保存卡片
+        function saveCards() {
+            localStorage.setItem('capwords_cards', JSON.stringify(cards));
+            localStorage.setItem('capwords_today_count', todayCount.toString());
+        }
+
+        // 更新统计
+        function updateStats() {
+            totalCountEl.textContent = cards.length;
+            todayCountEl.textContent = todayCount;
+        }
+
+        // 渲染卡片
+        function renderCards() {
+            if (cards.length === 0) {
+                emptyState.style.display = 'block';
+                cardsGrid.style.display = 'none';
+            } else {
+                emptyState.style.display = 'none';
+                cardsGrid.style.display = 'grid';
+                
+                cardsGrid.innerHTML = '';
+                cards.forEach((card, index) => {
+                    const cardEl = createCardElement(card, index);
+                    cardsGrid.appendChild(cardEl);
+                });
+            }
+        }
+
+        // 创建卡片元素
+        function createCardElement(card, index) {
+            const div = document.createElement('div');
+            div.className = 'card';
+            
+            const english = card.english || '';
+            const japanese = card.japanese || '';
+            const sentence = card.sentence || '';
+            const imageUrl = card.imageUrl || '';
+            
+            div.innerHTML = `
+                ${imageUrl ? `
+                    <div class="scan-effect">
+                        <img src="${imageUrl}" alt="${english}" class="card-image">
+                    </div>
+                ` : ''}
+                
+                <div class="card-content">
+                    ${english ? `<div class="card-text">${english}</div>` : ''}
+                    ${japanese ? `<div class="card-text">${japanese}</div>` : ''}
+                    ${sentence ? `<div class="card-sentence">${sentence}</div>` : ''}
+                    
+                    <div class="card-actions">
+                        <button class="action-btn" onclick="playPronunciation('${english}')" title="发音">🔊</button>
+                        <button class="action-btn" onclick="deleteCard(${index})" title="删除">🗑️</button>
+                    </div>
+                </div>
+            `;
+            
+            return div;
+        }
+
+        // 开始单词滚动动画
+        function startWordAnimation() {
+            let usedWords = [];
+            
+            function showNextWord() {
+                // 如果所有单词都用过了，重置
+                if (usedWords.length >= wordPool.length) {
+                    usedWords = [];
+                }
+                
+                // 获取未使用的单词
+                const availableWords = wordPool.filter(w => !usedWords.includes(w));
+                const randomWord = availableWords[Math.floor(Math.random() * availableWords.length)];
+                usedWords.push(randomWord);
+                
+                // 显示单词
+                loadingWords.innerHTML = `<span class="word-item">${randomWord}</span>`;
+            }
+            
+            // 立即显示第一个单词
+            showNextWord();
+            
+            // 每1500ms切换一个新单词（调慢速度）
+            wordInterval = setInterval(showNextWord, 1500);
+        }
+
+        // 停止单词滚动动画
+        function stopWordAnimation() {
+            if (wordInterval) {
+                clearInterval(wordInterval);
+                wordInterval = null;
+            }
+            loadingWords.innerHTML = '';
+        }
+
+        // 处理图片上传
+        async function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            console.log('📁 选择的文件:', file.name);
+            
+            loading.style.display = 'block';
+            emptyState.style.display = 'none';
+            startWordAnimation();
+            
+            try {
+                // 1. 上传图片
+                const formData = new FormData();
+                formData.append('file', file);
+                
+                const uploadResponse = await fetch(`${BACKEND_URL}/api/upload-image`, {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                if (!uploadResponse.ok) {
+                    throw new Error('上传图片失败');
+                }
+                
+                const uploadResult = await uploadResponse.json();
+                const imageUrl = uploadResult.url;
+                console.log('✅ 图片上传成功:', imageUrl);
+                
+                // 2. 调用 AI 识别
+                const requestData = {
+                    image_url: imageUrl,
+                    query: '请识别这张图片中的物体，并提供英文名称、日语翻译和例句。'
+                };
+                
+                const sseResponse = await fetch(`${BACKEND_URL}/api/chat/sse`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'text/event-stream'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+                
+                if (!sseResponse.ok) {
+                    throw new Error('AI 识别失败');
+                }
+                
+                // 3. 处理 SSE 响应
+                const result = await handleSSEResponse(sseResponse);
+                console.log('✅ SSE 响应:', result);
+                
+                // 4. 解析并添加卡片
+                const cardData = parseAIResponse(result, imageUrl);
+                if (cardData) {
+                    cards.unshift(cardData);
+                    todayCount++;
+                    saveCards();
+                    updateStats();
+                    renderCards();
+                    showNotification('✅ 学习卡片已生成！');
+                } else {
+                    throw new Error('无法解析 AI 响应');
+                }
+                
+            } catch (error) {
+                console.error('❌ 错误:', error);
+                showNotification('❌ ' + error.message);
+            } finally {
+                stopWordAnimation();
+                loading.style.display = 'none';
+                fileInput.value = '';
+            }
+        }
+
+        // 处理 SSE 响应
+        async function handleSSEResponse(response) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let finalContent = '';
+            
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+                
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    
+                    try {
+                        const eventData = JSON.parse(line.substring(6));
+                        
+                        if (eventData.type === 'reply') {
+                            const payload = eventData.payload;
+                            const actualPayload = payload.payload || payload;
+                            
+                            if (actualPayload.is_from_self) continue;
+                            
+                            if (actualPayload.content) {
+                                finalContent = actualPayload.content;
+                            }
+                            
+                            if (actualPayload.is_final) break;
+                        }
+                    } catch (e) {
+                        console.warn('解析 SSE 数据失败:', e);
+                    }
+                }
+            }
+            
+            return { content: finalContent };
+        }
+
+        // 解析 AI 响应
+        function parseAIResponse(result, imageUrl) {
+            try {
+                let jsonStr = result.content || '';
+                
+                // 移除 Markdown 代码块
+                if (jsonStr.startsWith('```')) {
+                    jsonStr = jsonStr.replace(/^```(?:json)?\s*\n?/, '');
+                    jsonStr = jsonStr.replace(/\n?```\s*$/, '');
+                }
+                
+                jsonStr = jsonStr.trim();
+                
+                const data = JSON.parse(jsonStr);
+                console.log('✅ JSON 解析成功:', data);
+                
+                if (!data.data?.primary_object) {
+                    throw new Error('数据格式不正确');
+                }
+                
+                const obj = data.data.primary_object;
+                
+                return {
+                    id: Date.now(),
+                    english: obj.object || '',
+                    japanese: obj.translations?.ja || '',
+                    sentence: obj.example_sentence || '',
+                    imageUrl: imageUrl,
+                    createdAt: new Date().toISOString()
+                };
+                
+            } catch (error) {
+                console.error('❌ 解析失败:', error);
+                return null;
+            }
+        }
+
+        // 删除卡片
+        function deleteCard(index) {
+            if (confirm('确定要删除这张卡片吗？')) {
+                cards.splice(index, 1);
+                saveCards();
+                updateStats();
+                renderCards();
+                showNotification('✅ 卡片已删除');
+            }
+        }
+
+        // 播放发音
+        function playPronunciation(text) {
+            if (!text) return;
+            
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US';
+            utterance.rate = 0.9;
+            speechSynthesis.speak(utterance);
+        }
+
+        // 显示通知
+        function showNotification(message) {
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.animation = 'slideOut 0.3s';
+                setTimeout(() => notification.remove(), 300);
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

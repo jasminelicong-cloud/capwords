@@ -1,0 +1,7 @@
+Flask==3.0.0
+flask-cors==4.0.0
+requests==2.31.0
+sseclient-py==1.8.0
+cos-python-sdk-v5==1.9.30
+tencentcloud-sdk-python==3.0.1046
+python-dotenv==1.0.0
