@@ -363,7 +363,7 @@
 
     <script>
         // 配置
-        const BACKEND_URL = '/api';
+        const BACKEND_URL = 'http://localhost:5002';
         
         // 数据存储
         let cards = [];
@@ -539,7 +539,7 @@
                 const formData = new FormData();
                 formData.append('file', file);
                 
-                const uploadResponse = await fetch(`${BACKEND_URL}/upload-image`, {
+                const uploadResponse = await fetch(`${BACKEND_URL}/api/upload-image`, {
                     method: 'POST',
                     body: formData
                 });
@@ -558,7 +558,7 @@
                     query: '请识别这张图片中的物体，并提供英文名称、日语翻译和例句。'
                 };
                 
-                const sseResponse = await fetch(`${BACKEND_URL}/chat-sse`, {
+                const sseResponse = await fetch(`${BACKEND_URL}/api/chat/sse`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
