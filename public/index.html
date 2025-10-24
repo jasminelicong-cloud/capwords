@@ -528,7 +528,13 @@
             const file = event.target.files[0];
             if (!file) return;
             
-            console.log('📁 选择的文件:', file.name);
+            console.log('📁 选择的文件:', file.name, '大小:', (file.size / 1024 / 1024).toFixed(2), 'MB');
+            
+            // 检查文件大小（限制 4MB）
+            if (file.size > 4 * 1024 * 1024) {
+                alert('图片太大了！请选择小于 4MB 的图片');
+                return;
+            }
             
             loading.style.display = 'block';
             emptyState.style.display = 'none';
@@ -539,13 +545,19 @@
                 const formData = new FormData();
                 formData.append('file', file);
                 
+                console.log('🚀 开始上传到:', `${BACKEND_URL}/api/upload-image`);
+                
                 const uploadResponse = await fetch(`${BACKEND_URL}/api/upload-image`, {
                     method: 'POST',
                     body: formData
                 });
                 
+                console.log('📡 上传响应状态:', uploadResponse.status);
+                
                 if (!uploadResponse.ok) {
-                    throw new Error('上传图片失败');
+                    const errorText = await uploadResponse.text();
+                    console.error('❌ 上传失败:', errorText);
+                    throw new Error(`上传图片失败: ${uploadResponse.status}`);
                 }
                 
                 const uploadResult = await uploadResponse.json();
@@ -589,7 +601,9 @@
                 }
                 
             } catch (error) {
-                console.error('❌ 错误:', error);
+                console.error('❌ 错误详情:', error);
+                console.error('❌ 错误堆栈:', error.stack);
+                alert('上传失败: ' + error.message + '\n请检查网络连接或尝试更小的图片');
                 showNotification('❌ ' + error.message);
             } finally {
                 stopWordAnimation();
