@@ -1,18 +1,13 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import os
+from http.server import BaseHTTPRequestHandler
 import json
-import uuid
-import base64
-from pathlib import Path
+import os
+import cgi
+from io import BytesIO
 from qcloud_cos import CosConfig, CosS3Client
 from tencentcloud.common import credential
 from tencentcloud.common.common_client import CommonClient
 from tencentcloud.common.profile.client_profile import ClientProfile
 from tencentcloud.common.profile.http_profile import HttpProfile
-
-app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*", "methods": ["GET", "POST", "OPTIONS"], "allow_headers": "*"}})
 
 # 配置常量
 REGION = "ap-guangzhou"
@@ -89,45 +84,65 @@ def upload_file_to_cos(file_data: bytes, file_name: str, credentials: dict) -> d
         "fileName": file_name
     }
 
-@app.route('/api/upload-image', methods=['POST', 'OPTIONS'])
-def upload_image():
-    """处理图片上传"""
-    if request.method == 'OPTIONS':
-        return '', 200
-        
-    try:
-        if 'file' not in request.files:
-            return jsonify({'error': '没有文件'}), 400
-        
-        file = request.files['file']
-        if file.filename == '':
-            return jsonify({'error': '文件名为空'}), 400
-        
-        # 读取文件数据
-        file_data = file.read()
-        file_ext = Path(file.filename).suffix.lower()
-        
-        # 获取临时密钥
-        credentials = get_temporary_credentials(
-            bot_biz_id=BOT_BIZ_ID,
-            file_type=file_ext,
-            is_public=True,
-            type_key=TYPE_KEY_REALTIME
-        )
-        
-        # 上传到 COS
-        result = upload_file_to_cos(file_data, file.filename, credentials)
-        
-        return jsonify({
-            'success': True,
-            'imageUrl': result['url'],
-            'cosPath': result['cosPath']
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+class handler(BaseHTTPRequestHandler):
+    def do_OPTIONS(self):
+        self.send_response(200)
+        self.send_header('Access-Control-Allow-Origin', '*')
+        self.send_header('Access-Control-Allow-Methods', 'POST, OPTIONS')
+        self.send_header('Access-Control-Allow-Headers', '*')
+        self.end_headers()
 
-# Vercel 需要这个
-def handler(request):
-    with app.request_context(request.environ):
-        return app.full_dispatch_request()
+    def do_POST(self):
+        try:
+            # 解析 multipart/form-data
+            content_type = self.headers['Content-Type']
+            if 'multipart/form-data' not in content_type:
+                raise Exception('Invalid content type')
+            
+            # 获取文件数据
+            form = cgi.FieldStorage(
+                fp=self.rfile,
+                headers=self.headers,
+                environ={'REQUEST_METHOD': 'POST'}
+            )
+            
+            if 'file' not in form:
+                raise Exception('No file uploaded')
+            
+            file_item = form['file']
+            file_data = file_item.file.read()
+            file_name = file_item.filename
+            file_ext = os.path.splitext(file_name)[1].lower()
+            
+            # 获取临时密钥
+            credentials = get_temporary_credentials(
+                bot_biz_id=BOT_BIZ_ID,
+                file_type=file_ext,
+                is_public=True,
+                type_key=TYPE_KEY_REALTIME
+            )
+            
+            # 上传到 COS
+            result = upload_file_to_cos(file_data, file_name, credentials)
+            
+            # 返回成功响应
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            
+            response_data = {
+                'success': True,
+                'imageUrl': result['url'],
+                'cosPath': result['cosPath']
+            }
+            self.wfile.write(json.dumps(response_data).encode())
+            
+        except Exception as e:
+            self.send_response(500)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            
+            error_response = {'error': str(e)}
+            self.wfile.write(json.dumps(error_response).encode())
