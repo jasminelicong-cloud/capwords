@@ -36,28 +36,25 @@ module.exports = async (req, res) => {
         console.log('📤 正在调用腾讯云 SSE 接口...');
         console.log('📋 前端请求体:', JSON.stringify(req.body));
         
-        // 构建腾讯云 API 请求格式
-        // 格式: { "bot_id": "xxx", "conversation_id": "xxx", "messages": [...] }
         const { image_url, query } = req.body;
         
-        // 生成 conversation ID
-        const conversationId = 'conv_' + Date.now();
+        // 生成 Session ID
+        const sessionId = 'sess_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
         
-        // 构建消息内容：Markdown 格式
-        // 重要：query 应该是 "请识别这张图片![](url)" 的格式
-        let messageContent = query || '请识别这张图片';
-        if (image_url && !messageContent.includes('![](')) {
-            messageContent = messageContent + `![](${image_url})`;
+        // 构建 Markdown 格式的内容
+        // 格式: "query文本![](image_url)"
+        let content = query || '请识别这张图片';
+        if (image_url) {
+            content = content + `![](${image_url})`;
         }
         
+        // 构建符合 ADP 要求的请求格式
         const requestBody = {
-            conversation_id: conversationId,
-            messages: [
-                {
-                    role: 'user',
-                    content: messageContent
-                }
-            ]
+            content: content,
+            bot_app_key: BOT_APP_KEY,
+            visitor_biz_id: sessionId,
+            session_id: sessionId,
+            visitor_labels: []
         };
         
         console.log('📤 发送到腾讯云的请求:', JSON.stringify(requestBody, null, 2));
