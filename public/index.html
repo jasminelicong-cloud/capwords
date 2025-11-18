@@ -630,7 +630,7 @@
                     query: '请识别这张图片中的物体，并提供英文名称、日语翻译和例句。'
                 };
                 
-                const sseResponse = await fetch(`${BACKEND_URL}/api/chat/sse`, {
+                const sseResponse = await fetch(`${BACKEND_URL}/api/chat-sse`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
