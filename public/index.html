@@ -630,17 +630,22 @@
                     query: '请识别这张图片中的物体，并提供英文名称、日语翻译和例句。'
                 };
                 
+                console.log('📤 发送 SSE 请求:', requestData);
+                
                 const sseResponse = await fetch(`${BACKEND_URL}/api/chat-sse`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'text/event-stream'
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify(requestData)
                 });
                 
+                console.log('📥 SSE 响应状态:', sseResponse.status, sseResponse.statusText);
+                
                 if (!sseResponse.ok) {
-                    throw new Error('AI 识别失败');
+                    const errorText = await sseResponse.text();
+                    console.error('❌ SSE 错误详情:', errorText);
+                    throw new Error(`AI 识别失败 (${sseResponse.status}): ${errorText.substring(0, 100)}`);
                 }
                 
                 // 3. 处理 SSE 响应
