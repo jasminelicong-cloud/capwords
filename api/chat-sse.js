@@ -54,6 +54,7 @@ module.exports = async (req, res) => {
             bot_app_key: BOT_APP_KEY,
             visitor_biz_id: sessionId,
             session_id: sessionId,
+            request_id: sessionId,
             visitor_labels: []
         };
         
