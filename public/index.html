@@ -177,9 +177,16 @@
                     let jsonStr = content;
                     if (jsonStr.startsWith('```')) jsonStr = jsonStr.replace(/^```[^\n]*\n?/, '').replace(/\n?```$/, '');
                     const data = JSON.parse(jsonStr);
-                    if (data.object) english = data.object;
-                    if (data.translations?.ja) japanese = data.translations.ja;
-                    if (data.example) sentence = data.example;
+                    console.log('JSON结构:', Object.keys(data));
+                    if (data.data?.primary_object?.object) {
+                        english = data.data.primary_object.object;
+                        japanese = data.data.primary_object.japanese || '';
+                        sentence = data.data.primary_object.example || '';
+                    } else if (data.object) {
+                        english = data.object;
+                        japanese = data.translations?.ja || data.japanese || '';
+                        sentence = data.example || '';
+                    }
                 } catch (e) {}
                 
                 // 如果JSON成功且有内容，直接返回
@@ -195,38 +202,33 @@
                 }
                 
                 // 用正则从纯文本提取
-                const lines = content.split('\n').filter(l => l.trim());
-                
-                // 提取英文单词（首行或包含英文字母的行）
-                for (const line of lines) {
-                    const trimmed = line.replace(/^[-*•·]\s*/, '').trim();
-                    if (/^[a-zA-Z\s]+$/.test(trimmed) && trimmed.length < 50 && !english) {
-                        english = trimmed;
-                        break;
+                if (!english) {
+                    const lines = content.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                    const englishLines = [];
+                    const japaneseLines = [];
+                    
+                    for (const line of lines) {
+                        const hasE = /[a-zA-Z]/.test(line);
+                        const hasJ = /[\u4e00-\u9fff\u3040-\u309f]/.test(line);
+                        
+                        if (hasE && !hasJ) englishLines.push(line);
+                        else if (hasJ && !hasE) japaneseLines.push(line);
                     }
-                }
-                
-                // 提取日文（汉字或假名）
-                for (const line of lines) {
-                    if (/[\u4e00-\u9fff\u3040-\u309f]/.test(line)) {
-                        japanese = line.replace(/^[-*•·]\s*/, '').trim();
-                        break;
+                    
+                    if (englishLines.length > 0) {
+                        englishLines.sort((a, b) => a.length - b.length);
+                        for (const line of englishLines) {
+                            if (line.length < 50) { english = line; break; }
+                        }
                     }
-                }
-                
-                // 提取例句（包含英文的较长句子）
-                for (const line of lines) {
-                    const trimmed = line.replace(/^[-*•·]\s*/, '').trim();
-                    if (trimmed.length > 15 && trimmed.length < 200 && /[a-zA-Z]/.test(trimmed) && !sentence) {
-                        sentence = trimmed;
+                    
+                    if (japaneseLines.length > 0) {
+                        japanese = japaneseLines[0];
                     }
-                }
-                
-                // 终极降级：如果啥都没提取出来，用第一行作为英文
-                if (!english && lines.length > 0) {
-                    const first = lines[0].replace(/^[-*•·]\s*/, '').trim();
-                    if (first.length > 0 && first.length < 50) {
-                        english = first;
+                    
+                    if (!english && lines.length > 0) {
+                        const first = lines[0].replace(/^[-*•·`\*\s]*/, '').trim();
+                        if (first.length > 0 && first.length < 50) english = first;
                     }
                 }
                 
