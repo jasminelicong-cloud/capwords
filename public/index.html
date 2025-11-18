@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CapWords - AI 语言学习</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #FFE5EC 0%, #FFF0F5 100%); min-height: 100vh; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .navbar { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); padding: 20px 30px; border-radius: 20px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1); margin-bottom: 30px; display: flex; justify-content: space-between; align-items: center; }
+        .logo { font-size: 28px; font-weight: 700; color: #FF6B9D; }
+        .stats { display: flex; gap: 30px; }
+        .stat-item { text-align: center; }
+        .stat-number { font-size: 32px; font-weight: 700; color: #FF6B9D; }
+        .stat-label { font-size: 14px; color: #666; margin-top: 5px; }
+        .camera-section { text-align: center; margin: 50px 0; }
+        .camera-btn { width: 120px; height: 120px; border-radius: 50%; background: linear-gradient(135deg, #FF6B9D, #C44569); border: none; font-size: 48px; cursor: pointer; box-shadow: 0 10px 30px rgba(255, 107, 157, 0.4); transition: all 0.3s; }
+        .camera-btn:hover { transform: scale(1.1); }
+        .camera-hint { margin-top: 20px; font-size: 16px; color: #666; }
+        #fileInput { display: none; }
+        .loading { display: none; text-align: center; padding: 40px; }
+        .spinner { width: 50px; height: 50px; border: 4px solid #FFE5EC; border-top-color: #FF6B9D; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 30px; margin-top: 30px; }
+        .card { background: white; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); }
+        .card:hover { transform: translateY(-5px); }
+        .card-image { width: 100%; height: 300px; object-fit: cover; }
+        .card-content { padding: 25px; }
+        .card-text { font-family: 'Courier New', monospace; font-size: 1.4em; color: #000; margin-bottom: 10px; }
+        .card-sentence { font-family: 'Courier New', monospace; font-size: 0.9em; color: #666; margin-bottom: 20px; }
+        .card-actions { display: flex; gap: 10px; justify-content: flex-end; }
+        .action-btn { background: none; border: none; font-size: 1.3em; cursor: pointer; }
+        .empty-state { text-align: center; padding: 80px 20px; color: #999; }
+        .notification { position: fixed; top: 20px; right: 20px; background: white; padding: 15px 25px; border-radius: 10px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15); z-index: 1000; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="navbar">
+            <div class="logo">📚 CapWords</div>
+            <div class="stats">
+                <div class="stat-item"><div class="stat-number" id="totalCount">0</div><div class="stat-label">学习词汇</div></div>
+                <div class="stat-item"><div class="stat-number" id="todayCount">0</div><div class="stat-label">今日新增</div></div>
+            </div>
+        </div>
+        <div class="camera-section">
+            <button class="camera-btn" id="cameraBtn">📷</button>
+            <p class="camera-hint">点击拍照，开始学习</p>
+            <input type="file" id="fileInput" accept="image/*">
+        </div>
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>卡片生成中……</p>
+        </div>
+        <div class="cards-grid" id="cardsGrid"></div>
+        <div class="empty-state" id="emptyState">
+            <div style="font-size: 80px; margin-bottom: 20px;">🎨</div>
+            <p>还没有学习卡片</p>
+        </div>
+    </div>
+    <script>
+        const BACKEND_URL = '';
+        let cards = [];
+        let todayCount = 0;
+        const cameraBtn = document.getElementById('cameraBtn');
+        const fileInput = document.getElementById('fileInput');
+        const loading = document.getElementById('loading');
+        const cardsGrid = document.getElementById('cardsGrid');
+        const emptyState = document.getElementById('emptyState');
+        window.addEventListener('load', () => {
+            loadCards();
+            updateStats();
+            cameraBtn.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', handleImageUpload);
+            console.log('✅ CapWords 已加载');
+        });
+        function loadCards() {
+            const saved = localStorage.getItem('capwords_cards');
+            if (saved) cards = JSON.parse(saved);
+            renderCards();
+        }
+        function saveCards() {
+            localStorage.setItem('capwords_cards', JSON.stringify(cards));
+        }
+        function updateStats() {
+            document.getElementById('totalCount').textContent = cards.length;
+            document.getElementById('todayCount').textContent = todayCount;
+        }
+        function renderCards() {
+            if (cards.length === 0) {
+                emptyState.style.display = 'block';
+                cardsGrid.style.display = 'none';
+            } else {
+                emptyState.style.display = 'none';
+                cardsGrid.style.display = 'grid';
+                cardsGrid.innerHTML = '';
+                cards.forEach((card, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'card';
+                    div.innerHTML = `${card.imageUrl ? `<img src="${card.imageUrl}" class="card-image">` : ''}<div class="card-content">${card.english ? `<div class="card-text">${card.english}</div>` : ''}${card.japanese ? `<div class="card-text">${card.japanese}</div>` : ''}${card.sentence ? `<div class="card-sentence">${card.sentence}</div>` : ''}<div class="card-actions"><button class="action-btn" onclick="playPronunciation('${card.english}')">🔊</button><button class="action-btn" onclick="deleteCard(${index})">🗑️</button></div></div>`;
+                    cardsGrid.appendChild(div);
+                });
+            }
+        }
+        async function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            loading.style.display = 'block';
+            emptyState.style.display = 'none';
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                const uploadResponse = await fetch(`${BACKEND_URL}/api/upload-image`, { method: 'POST', body: formData });
+                if (!uploadResponse.ok) throw new Error('上传图片失败');
+                const uploadResult = await uploadResponse.json();
+                const imageUrl = uploadResult.url;
+                const sseResponse = await fetch(`${BACKEND_URL}/api/chat-sse`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url: imageUrl, query: '请识别这张图片中的物体，并提供英文名称、日语翻译和例句。' }) });
+                if (!sseResponse.ok) throw new Error('AI 识别失败');
+                const result = await handleSSEResponse(sseResponse);
+                const cardData = parseAIResponse(result, imageUrl);
+                if (cardData) {
+                    cards.unshift(cardData);
+                    todayCount++;
+                    saveCards();
+                    updateStats();
+                    renderCards();
+                    showNotification('✅ 学习卡片已生成！');
+                } else {
+                    throw new Error('无法解析 AI 响应');
+                }
+            } catch (error) {
+                console.error('❌ 错误:', error);
+                showNotification('❌ ' + error.message);
+            } finally {
+                loading.style.display = 'none';
+                fileInput.value = '';
+            }
+        }
+        async function handleSSEResponse(response) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let finalContent = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const eventData = JSON.parse(line.substring(6));
+                        if (eventData.type === 'reply') {
+                            const payload = eventData.payload?.payload || eventData.payload;
+                            if (!payload.is_from_self && payload.content) finalContent = payload.content;
+                            if (payload.is_final) break;
+                        }
+                    } catch (e) {}
+                }
+            }
+            return { content: finalContent };
+        }
+        function parseAIResponse(result, imageUrl) {
+            try {
+                let content = result.content || '';
+                let data = null;
+                try {
+                    let jsonStr = content.trim();
+                    if (jsonStr.startsWith('```')) jsonStr = jsonStr.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+                    data = JSON.parse(jsonStr);
+                } catch (e) {}
+                let english = '', japanese = '', sentence = '';
+                if (data) {
+                    if (data.data?.primary_object) {
+                        english = data.data.primary_object.object || '';
+                        japanese = data.data.primary_object.translations?.ja || '';
+                        sentence = data.data.primary_object.example_sentence || '';
+                    } else if (data.english) {
+                        english = data.english;
+                        japanese = data.japanese || '';
+                        sentence = data.sentence || '';
+                    }
+                } else {
+                    const lines = content.split('\n').filter(l => l.trim());
+                    if (lines.length > 0) english = lines[0].substring(0, 50);
+                    if (lines.length > 1) japanese = lines[1].substring(0, 50);
+                    if (lines.length > 2) sentence = lines.slice(2).join(' ').substring(0, 200);
+                }
+                if (!english && !japanese) {
+                    const lines = content.split('\n');
+                    english = lines[0] || 'Item';
+                    japanese = lines[1] || '';
+                }
+                return {
+                    id: Date.now(),
+                    english: english.substring(0, 50),
+                    japanese: japanese.substring(0, 50),
+                    sentence: sentence.substring(0, 200),
+                    imageUrl: imageUrl,
+                    createdAt: new Date().toISOString()
+                };
+            } catch (error) {
+                console.error('❌ 解析失败:', error);
+                return null;
+            }
+        }
+        function deleteCard(index) {
+            if (confirm('确定删除？')) {
+                cards.splice(index, 1);
+                saveCards();
+                updateStats();
+                renderCards();
+                showNotification('✅ 已删除');
+            }
+        }
+        function playPronunciation(text) {
+            if (!text) return;
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US';
+            speechSynthesis.speak(utterance);
+        }
+        function showNotification(message) {
+            const notification = document.createElement('div');
+            notification.className = 'notification';
+            notification.textContent = message;
+            document.body.appendChild(notification);
+            setTimeout(() => notification.remove(), 3000);
+        }
+    </script>
+</body>
+</html>
