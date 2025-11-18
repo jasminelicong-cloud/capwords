@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CapWords - AI 语言学习</title>
+    <title>CapWords</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #FFE5EC 0%, #FFF0F5 100%); min-height: 100vh; padding: 20px; }
@@ -55,38 +55,41 @@
         </div>
         <div class="cards-grid" id="cardsGrid"></div>
         <div class="empty-state" id="emptyState">
-            <div style="font-size: 80px; margin-bottom: 20px;">🎨</div>
+            <div style="font-size: 80px; margin-bottom: 20px;">��</div>
             <p>还没有学习卡片</p>
         </div>
     </div>
     <script>
         const BACKEND_URL = '';
         let cards = [];
-        let todayCount = 0;
         const cameraBtn = document.getElementById('cameraBtn');
         const fileInput = document.getElementById('fileInput');
         const loading = document.getElementById('loading');
         const cardsGrid = document.getElementById('cardsGrid');
         const emptyState = document.getElementById('emptyState');
+        
         window.addEventListener('load', () => {
             loadCards();
             updateStats();
             cameraBtn.addEventListener('click', () => fileInput.click());
             fileInput.addEventListener('change', handleImageUpload);
-            console.log('✅ CapWords 已加载');
+            console.log('✅ CapWords loaded');
         });
+        
         function loadCards() {
             const saved = localStorage.getItem('capwords_cards');
             if (saved) cards = JSON.parse(saved);
             renderCards();
         }
+        
         function saveCards() {
             localStorage.setItem('capwords_cards', JSON.stringify(cards));
         }
+        
         function updateStats() {
             document.getElementById('totalCount').textContent = cards.length;
-            document.getElementById('todayCount').textContent = todayCount;
         }
+        
         function renderCards() {
             if (cards.length === 0) {
                 emptyState.style.display = 'block';
@@ -103,6 +106,7 @@
                 });
             }
         }
+        
         async function handleImageUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -112,31 +116,29 @@
                 const formData = new FormData();
                 formData.append('file', file);
                 const uploadResponse = await fetch(`${BACKEND_URL}/api/upload-image`, { method: 'POST', body: formData });
-                if (!uploadResponse.ok) throw new Error('上传图片失败');
+                if (!uploadResponse.ok) throw new Error('上传失败');
                 const uploadResult = await uploadResponse.json();
                 const imageUrl = uploadResult.url;
-                const sseResponse = await fetch(`${BACKEND_URL}/api/chat-sse`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url: imageUrl, query: '请识别这张图片中的物体，并提供英文名称、日语翻译和例句。' }) });
-                if (!sseResponse.ok) throw new Error('AI 识别失败');
+                const sseResponse = await fetch(`${BACKEND_URL}/api/chat-sse`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url: imageUrl, query: '请用英文和日文分别标注这个物体的名称，并给出一个例句。' }) });
+                if (!sseResponse.ok) throw new Error('AI失败');
                 const result = await handleSSEResponse(sseResponse);
                 const cardData = parseAIResponse(result, imageUrl);
                 if (cardData) {
                     cards.unshift(cardData);
-                    todayCount++;
                     saveCards();
                     updateStats();
                     renderCards();
-                    showNotification('✅ 学习卡片已生成！');
-                } else {
-                    throw new Error('无法解析 AI 响应');
-                }
+                    showNotification('✅ 卡片已生成！');
+                } else throw new Error('解析失败');
             } catch (error) {
-                console.error('❌ 错误:', error);
+                console.error('错误:', error);
                 showNotification('❌ ' + error.message);
             } finally {
                 loading.style.display = 'none';
                 fileInput.value = '';
             }
         }
+        
         async function handleSSEResponse(response) {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
@@ -162,71 +164,110 @@
             }
             return { content: finalContent };
         }
+        
         function parseAIResponse(result, imageUrl) {
             try {
-                let content = result.content || '';
-                let data = null;
-                try {
-                    let jsonStr = content.trim();
-                    if (jsonStr.startsWith('```')) jsonStr = jsonStr.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
-                    data = JSON.parse(jsonStr);
-                } catch (e) {}
+                let content = (result.content || '').trim();
+                console.log('原始响应:', content.substring(0, 200));
+                
                 let english = '', japanese = '', sentence = '';
-                if (data) {
-                    if (data.data?.primary_object) {
-                        english = data.data.primary_object.object || '';
-                        japanese = data.data.primary_object.translations?.ja || '';
-                        sentence = data.data.primary_object.example_sentence || '';
-                    } else if (data.english) {
-                        english = data.english;
-                        japanese = data.japanese || '';
-                        sentence = data.sentence || '';
+                
+                // 尝试JSON
+                try {
+                    let jsonStr = content;
+                    if (jsonStr.startsWith('```')) jsonStr = jsonStr.replace(/^```[^\n]*\n?/, '').replace(/\n?```$/, '');
+                    const data = JSON.parse(jsonStr);
+                    if (data.object) english = data.object;
+                    if (data.translations?.ja) japanese = data.translations.ja;
+                    if (data.example) sentence = data.example;
+                } catch (e) {}
+                
+                // 如果JSON成功且有内容，直接返回
+                if (english || japanese) {
+                    return {
+                        id: Date.now(),
+                        english: english.substring(0, 50),
+                        japanese: japanese.substring(0, 50),
+                        sentence: sentence.substring(0, 200),
+                        imageUrl: imageUrl,
+                        createdAt: new Date().toISOString()
+                    };
+                }
+                
+                // 用正则从纯文本提取
+                const lines = content.split('\n').filter(l => l.trim());
+                
+                // 提取英文单词（首行或包含英文字母的行）
+                for (const line of lines) {
+                    const trimmed = line.replace(/^[-*•·]\s*/, '').trim();
+                    if (/^[a-zA-Z\s]+$/.test(trimmed) && trimmed.length < 50 && !english) {
+                        english = trimmed;
+                        break;
                     }
-                } else {
-                    const lines = content.split('\n').filter(l => l.trim());
-                    if (lines.length > 0) english = lines[0].substring(0, 50);
-                    if (lines.length > 1) japanese = lines[1].substring(0, 50);
-                    if (lines.length > 2) sentence = lines.slice(2).join(' ').substring(0, 200);
                 }
-                if (!english && !japanese) {
-                    const lines = content.split('\n');
-                    english = lines[0] || 'Item';
-                    japanese = lines[1] || '';
+                
+                // 提取日文（汉字或假名）
+                for (const line of lines) {
+                    if (/[\u4e00-\u9fff\u3040-\u309f]/.test(line)) {
+                        japanese = line.replace(/^[-*•·]\s*/, '').trim();
+                        break;
+                    }
                 }
+                
+                // 提取例句（包含英文的较长句子）
+                for (const line of lines) {
+                    const trimmed = line.replace(/^[-*•·]\s*/, '').trim();
+                    if (trimmed.length > 15 && trimmed.length < 200 && /[a-zA-Z]/.test(trimmed) && !sentence) {
+                        sentence = trimmed;
+                    }
+                }
+                
+                // 终极降级：如果啥都没提取出来，用第一行作为英文
+                if (!english && lines.length > 0) {
+                    const first = lines[0].replace(/^[-*•·]\s*/, '').trim();
+                    if (first.length > 0 && first.length < 50) {
+                        english = first;
+                    }
+                }
+                
+                console.log('提取结果:', { english, japanese, sentence });
+                
                 return {
                     id: Date.now(),
-                    english: english.substring(0, 50),
-                    japanese: japanese.substring(0, 50),
-                    sentence: sentence.substring(0, 200),
+                    english: (english || 'Item').substring(0, 50),
+                    japanese: (japanese || '').substring(0, 50),
+                    sentence: (sentence || '').substring(0, 200),
                     imageUrl: imageUrl,
                     createdAt: new Date().toISOString()
                 };
             } catch (error) {
-                console.error('❌ 解析失败:', error);
+                console.error('解析错误:', error);
                 return null;
             }
         }
+        
         function deleteCard(index) {
-            if (confirm('确定删除？')) {
+            if (confirm('删除？')) {
                 cards.splice(index, 1);
                 saveCards();
                 updateStats();
                 renderCards();
-                showNotification('✅ 已删除');
             }
         }
+        
         function playPronunciation(text) {
             if (!text) return;
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'en-US';
-            speechSynthesis.speak(utterance);
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = 'en-US';
+            speechSynthesis.speak(u);
         }
+        
         function showNotification(message) {
-            const notification = document.createElement('div');
-            notification.className = 'notification';
-            notification.textContent = message;
-            document.body.appendChild(notification);
-            setTimeout(() => notification.remove(), 3000);
+            const n = document.createElement('div');
+            n.className = 'notification';
+            n.textContent = message;
+            document.body.appendChild(n);
+            setTimeout(() => n.remove(), 3000);
         }
     </script>
 </body>
