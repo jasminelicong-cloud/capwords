@@ -61,11 +61,11 @@ module.exports = async (req, res) => {
         console.log('📤 发送到腾讯云的请求:', JSON.stringify(requestBody, null, 2));
         
         // 转发请求到腾讯云 SSE 接口
+        // 注意：不使用 X-App-Key 头，而是在 request body 中传递 bot_app_key
         const response = await fetch(SSE_URL, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'X-App-Key': BOT_APP_KEY
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify(requestBody),
             timeout: 30000
