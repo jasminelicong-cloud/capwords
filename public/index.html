@@ -43,6 +43,7 @@
                 <div class="stat-item"><div class="stat-number" id="totalCount">0</div><div class="stat-label">学习词汇</div></div>
                 <div class="stat-item"><div class="stat-number" id="todayCount">0</div><div class="stat-label">今日新增</div></div>
             </div>
+            <button onclick="promptForBotKey()" style="padding: 8px 15px; background: #FF6B9D; color: white; border: none; border-radius: 5px; cursor: pointer;">⚙️ 设置</button>
         </div>
         <div class="camera-section">
             <button class="camera-btn" id="cameraBtn">📷</button>
@@ -76,7 +77,16 @@
             console.log('✅ CapWords loaded');
         });
         
-        function loadCards() {
+        function promptForBotKey() {
+            const newKey = prompt('请输入 BOT_APP_KEY:', BOT_APP_KEY);
+            if (newKey !== null) {
+                BOT_APP_KEY = newKey;
+                localStorage.setItem('capwords_bot_app_key', newKey);
+                alert('✅ BOT_APP_KEY 已保存');
+            }
+        }
+        
+                function loadCards() {
             const saved = localStorage.getItem('capwords_cards');
             if (saved) cards = JSON.parse(saved);
             renderCards();
@@ -119,7 +129,7 @@
                 if (!uploadResponse.ok) throw new Error('上传失败');
                 const uploadResult = await uploadResponse.json();
                 const imageUrl = uploadResult.url;
-                const sseResponse = await fetch(`${BACKEND_URL}/api/chat-sse`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url: imageUrl, query: '请识别这个物体，并按照以下JSON格式返回：{"object":"英文名称","japanese":"日文名称","example":"例句"}。只返回JSON，不要其他内容。' }) });
+                const sseResponse = await fetch(`${BACKEND_URL}/api/chat-sse`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url: imageUrl, query: '请识别这个物体，并按照以下JSON格式返回：{"object":"英文名称","japanese":"日文名称","example":"例句"}。只返回JSON，不要其他内容。', bot_app_key: BOT_APP_KEY }) });
                 if (!sseResponse.ok) throw new Error('AI失败');
                 const result = await handleSSEResponse(sseResponse);
                 const cardData = parseAIResponse(result, imageUrl);
