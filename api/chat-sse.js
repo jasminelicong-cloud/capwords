@@ -34,6 +34,33 @@ module.exports = async (req, res) => {
 
     try {
         console.log('📤 正在调用腾讯云 SSE 接口...');
+        console.log('📋 前端请求体:', JSON.stringify(req.body));
+        
+        // 构建腾讯云 API 请求格式
+        // 格式: { "bot_id": "xxx", "conversation_id": "xxx", "messages": [...] }
+        const { image_url, query } = req.body;
+        
+        // 生成 conversation ID
+        const conversationId = 'conv_' + Date.now();
+        
+        // 构建消息内容：Markdown 格式
+        // 重要：query 应该是 "请识别这张图片![](url)" 的格式
+        let messageContent = query || '请识别这张图片';
+        if (image_url && !messageContent.includes('![](')) {
+            messageContent = messageContent + `![](${image_url})`;
+        }
+        
+        const requestBody = {
+            conversation_id: conversationId,
+            messages: [
+                {
+                    role: 'user',
+                    content: messageContent
+                }
+            ]
+        };
+        
+        console.log('📤 发送到腾讯云的请求:', JSON.stringify(requestBody, null, 2));
         
         // 转发请求到腾讯云 SSE 接口
         const response = await fetch(SSE_URL, {
@@ -42,7 +69,7 @@ module.exports = async (req, res) => {
                 'Content-Type': 'application/json',
                 'X-App-Key': BOT_APP_KEY
             },
-            body: JSON.stringify(req.body),
+            body: JSON.stringify(requestBody),
             timeout: 30000
         });
 
