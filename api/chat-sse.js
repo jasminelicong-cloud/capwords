@@ -5,7 +5,10 @@ const SSE_URL = "https://wss.lke.cloud.tencent.com/v1/qbot/chat/sse";
 const BOT_APP_KEY = process.env.BOT_APP_KEY;
 
 console.log('🔧 chat-sse.js 已加载');
-console.log('✓ BOT_APP_KEY 已配置:', BOT_APP_KEY ? '是' : '否');
+console.log('✓ BOT_APP_KEY 已配置:', BOT_APP_KEY ? `是 (${BOT_APP_KEY.substring(0, 30)}...)` : '否');
+console.log('📋 环境变量检查:');
+console.log('  - BOT_APP_KEY:', BOT_APP_KEY ? '✅' : '❌');
+console.log('  - process.env:', Object.keys(process.env).length, '个变量');
 
 module.exports = async (req, res) => {
     // 处理 CORS
@@ -72,13 +75,17 @@ module.exports = async (req, res) => {
         });
 
         console.log('📥 收到响应:', response.status);
+        console.log('📋 响应 Headers:', Object.fromEntries(response.headers));
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('❌ 腾讯云返回错误:', response.status, errorText);
+            console.error('❌ 腾讯云返回错误:', response.status);
+            console.error('❌ 错误内容:', errorText);
+            console.error('❌ 请求体回顾:', JSON.stringify(requestBody, null, 2));
             return res.status(response.status).json({ 
                 error: `腾讯云 API 错误: ${response.status}`,
-                details: errorText.substring(0, 200)
+                details: errorText.substring(0, 300),
+                requestBody: requestBody
             });
         }
 
