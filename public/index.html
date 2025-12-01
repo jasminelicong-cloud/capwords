@@ -63,6 +63,8 @@
     <script>
         const BACKEND_URL = '';
         let cards = [];
+        let BOT_APP_KEY = localStorage.getItem('capwords_bot_app_key') || '';
+        
         const cameraBtn = document.getElementById('cameraBtn');
         const fileInput = document.getElementById('fileInput');
         const loading = document.getElementById('loading');
@@ -70,6 +72,9 @@
         const emptyState = document.getElementById('emptyState');
         
         window.addEventListener('load', () => {
+            if (!BOT_APP_KEY) {
+                promptForBotKey();
+            }
             loadCards();
             updateStats();
             cameraBtn.addEventListener('click', () => fileInput.click());
@@ -78,11 +83,13 @@
         });
         
         function promptForBotKey() {
-            const newKey = prompt('请输入 BOT_APP_KEY:', BOT_APP_KEY);
-            if (newKey !== null) {
-                BOT_APP_KEY = newKey;
-                localStorage.setItem('capwords_bot_app_key', newKey);
-                alert('✅ BOT_APP_KEY 已保存');
+            const newKey = prompt('请输入 BOT_APP_KEY (来自腾讯云 ADP 机器人):', BOT_APP_KEY || '');
+            if (newKey !== null && newKey.trim()) {
+                BOT_APP_KEY = newKey.trim();
+                localStorage.setItem('capwords_bot_app_key', BOT_APP_KEY);
+                showNotification('✅ BOT_APP_KEY 已保存');
+            } else if (newKey !== null && newKey === '') {
+                showNotification('⚠️ 请输入有效的 BOT_APP_KEY');
             }
         }
         
@@ -120,17 +127,42 @@
         async function handleImageUpload(event) {
             const file = event.target.files[0];
             if (!file) return;
+
+            if (!BOT_APP_KEY) {
+                showNotification('❌ 请先设置 BOT_APP_KEY');
+                promptForBotKey();
+                return;
+            }
+
             loading.style.display = 'block';
             emptyState.style.display = 'none';
             try {
+                console.log('📤 开始上传:', file.name);
                 const formData = new FormData();
                 formData.append('file', file);
                 const uploadResponse = await fetch(`${BACKEND_URL}/api/upload-image`, { method: 'POST', body: formData });
-                if (!uploadResponse.ok) throw new Error('上传失败');
+                if (!uploadResponse.ok) throw new Error(`上传失败 (${uploadResponse.status})`);
                 const uploadResult = await uploadResponse.json();
                 const imageUrl = uploadResult.url;
-                const sseResponse = await fetch(`${BACKEND_URL}/api/chat-sse`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image_url: imageUrl, query: '请识别这个物体，并按照以下JSON格式返回：{"object":"英文名称","japanese":"日文名称","example":"例句"}。只返回JSON，不要其他内容。', bot_app_key: BOT_APP_KEY }) });
-                if (!sseResponse.ok) throw new Error('AI失败');
+                console.log('🌐 图片 URL:', imageUrl);
+
+                console.log('🤖 调用 AI API...');
+                console.log('🔑 使用的 BOT_APP_KEY:', BOT_APP_KEY.substring(0, 30) + '...');
+                const sseResponse = await fetch(`${BACKEND_URL}/api/chat-sse`, { 
+                    method: 'POST', 
+                    headers: { 'Content-Type': 'application/json' }, 
+                    body: JSON.stringify({ 
+                        image_url: imageUrl, 
+                        query: '请识别这个物体，并按照以下JSON格式返回：{"object":"英文名称","japanese":"日文名称","example":"例句"}。只返回JSON，不要其他内容。', 
+                        bot_app_key: BOT_APP_KEY 
+                    }) 
+                });
+
+                if (!sseResponse.ok) {
+                    const error = await sseResponse.json().catch(() => ({}));
+                    throw new Error(`AI API 失败 (${sseResponse.status}): ${error.error || '未知错误'}`);
+                }
+
                 const result = await handleSSEResponse(sseResponse);
                 const cardData = parseAIResponse(result, imageUrl);
                 if (cardData) {
@@ -139,9 +171,9 @@
                     updateStats();
                     renderCards();
                     showNotification('✅ 卡片已生成！');
-                } else throw new Error('解析失败');
+                } else throw new Error('无法解析 AI 响应');
             } catch (error) {
-                console.error('错误:', error);
+                console.error('❌ 错误:', error);
                 showNotification('❌ ' + error.message);
             } finally {
                 loading.style.display = 'none';
@@ -154,9 +186,14 @@
             const decoder = new TextDecoder();
             let buffer = '';
             let finalContent = '';
+            let eventCount = 0;
+            console.log('📡 开始读取 SSE 流...');
             while (true) {
                 const { done, value } = await reader.read();
-                if (done) break;
+                if (done) {
+                    console.log('📡 SSE 流结束，共收到', eventCount, '个事件');
+                    break;
+                }
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n');
                 buffer = lines.pop() || '';
@@ -164,21 +201,40 @@
                     if (!line.startsWith('data: ')) continue;
                     try {
                         const eventData = JSON.parse(line.substring(6));
+                        eventCount++;
+                        console.log('📨 事件类型:', eventData.type);
+                        
+                        // ✅ 根据官方文档，reply 事件包含 AI 回复内容
                         if (eventData.type === 'reply') {
-                            const payload = eventData.payload?.payload || eventData.payload;
-                            if (!payload.is_from_self && payload.content) finalContent = payload.content;
-                            if (payload.is_final) break;
+                            const payload = eventData.payload;
+                            console.log('📝 Payload 结构:', Object.keys(payload));
+                            
+                            // ✅ 直接使用 payload.content，不是 payload.payload
+                            if (payload.content && !payload.is_from_self) {
+                                finalContent += payload.content;
+                                console.log('✉️  收到内容块:', payload.content.substring(0, 100));
+                            }
+                            
+                            // ✅ 检查 is_final 标记流的结束
+                            if (payload.is_final) {
+                                console.log('✅ 收到最终响应 (is_final=true)');
+                                break;
+                            }
                         }
-                    } catch (e) {}
+                    } catch (e) {
+                        console.warn('⚠️  无法解析事件:', line.substring(0, 50), '错误:', e.message);
+                    }
                 }
             }
+            console.log('📋 最终内容长度:', finalContent.length);
+            console.log('📋 最终内容 (前500字):', finalContent.substring(0, 500));
             return { content: finalContent };
         }
         
         function parseAIResponse(result, imageUrl) {
             try {
                 let content = (result.content || '').trim();
-                console.log('📋 原始响应:', content.substring(0, 300));
+                console.log('📋 原始响应 (前300字):', content.substring(0, 300)); if (content.length > 300) console.log('📋 原始响应 (全文):', content);
                 
                 let english = '', japanese = '', sentence = '';
                 

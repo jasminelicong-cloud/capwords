@@ -2,10 +2,12 @@
   "name": "capwords",
   "version": "1.0.0",
   "description": "CapWords AI language learning app",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "dependencies": {
-    "tencentcloud-sdk-nodejs-lke": "^4.0.900",
-    "cos-nodejs-sdk-v5": "^2.12.0",
     "multiparty": "^4.2.3",
-    "node-fetch": "^2.7.0"
+    "tencentcloud-sdk-nodejs-lke": "^4.0.900",
+    "cos-nodejs-sdk-v5": "^2.12.0"
   }
 }

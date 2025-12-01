@@ -1,11 +1,11 @@
 /**
- * SSE Chat API - Vercel Serverless Function
- * Uses Node 18+ native fetch API for Tencent Cloud ADP
+ * SSE Chat API - Serverless Function
+ * Uses Node 18+ native fetch API
  */
 
 const SSE_URL = "https://wss.lke.cloud.tencent.com/v1/qbot/chat/sse";
 
-module.exports = async (req, res) => {
+async function forwardSSE(req, res) {
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
@@ -23,31 +23,18 @@ module.exports = async (req, res) => {
     try {
         const { image_url, query, bot_app_key } = req.body;
 
-        // Use bot_app_key from request or environment
         const appKey = bot_app_key || process.env.BOT_APP_KEY;
 
         if (!appKey) {
-            console.error('[chat-sse] Missing bot_app_key in request or environment');
             return res.status(400).json({
                 error: 'Missing bot_app_key',
-                hint: 'Please provide bot_app_key in request body'
+                hint: 'Provide bot_app_key in request body'
             });
         }
 
-        // 根据官方文档，生成 UUID 格式的 session_id 和 visitor_biz_id
-        const generateUUID = () => {
-            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-                const r = Math.random() * 16 | 0;
-                const v = c === 'x' ? r : (r & 0x3 | 0x8);
-                return v.toString(16);
-            });
-        };
-        
-        const sessionId = generateUUID();
-        const visitorId = generateUUID();
-        const requestId = generateUUID();
+        const sessionId = 'sess_' + Date.now();
 
-        // Build request content with image
+        // Build request content
         let content = query || '请识别这张图片';
         if (image_url) {
             content = content + `![](${image_url})`;
@@ -56,19 +43,16 @@ module.exports = async (req, res) => {
         const requestBody = {
             content: content,
             bot_app_key: appKey,
-            visitor_biz_id: visitorId,
+            visitor_biz_id: sessionId,
             session_id: sessionId,
-            request_id: requestId,
+            request_id: sessionId,
             visitor_labels: []
         };
 
-        console.log('[chat-sse] 发送请求到腾讯云:', {
-            content_length: content.length,
-            has_image: !!image_url,
+        console.log('[chat-sse-v2] Sending to Tencent Cloud:', {
             url: SSE_URL,
-            session_id: sessionId,
-            request_id: requestId,
-            bot_app_key: appKey.substring(0, 20) + '...'
+            content_length: content.length,
+            has_image: !!image_url
         });
 
         // Call Tencent Cloud API
@@ -80,13 +64,13 @@ module.exports = async (req, res) => {
             body: JSON.stringify(requestBody)
         });
 
-        console.log('[chat-sse] Response status:', response.status);
+        console.log('[chat-sse-v2] Response status:', response.status);
 
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('[chat-sse] Error:', response.status, errorText.substring(0, 200));
+            console.error('[chat-sse-v2] Error:', response.status, errorText.substring(0, 200));
             return res.status(response.status).json({
-                error: `Tencent Cloud API error: ${response.status}`,
+                error: `API error: ${response.status}`,
                 details: errorText.substring(0, 200)
             });
         }
@@ -96,32 +80,30 @@ module.exports = async (req, res) => {
         res.setHeader('Cache-Control', 'no-cache');
         res.setHeader('Connection', 'keep-alive');
 
-        // Stream the response
+        // Stream response
         const reader = response.body.getReader();
-        const textDecoder = new TextDecoder();
+        const encoder = new TextEncoder();
 
         try {
             while (true) {
                 const { done, value } = await reader.read();
-                if (done) {
-                    console.log('[chat-sse] Stream ended');
-                    break;
-                }
+                if (done) break;
                 res.write(value);
             }
-        } catch (streamError) {
-            console.error('[chat-sse] Stream error:', streamError.message);
         } finally {
-            res.end();
+            reader.cancel();
         }
 
+        res.end();
+
     } catch (error) {
-        console.error('[chat-sse] Exception:', error.message);
+        console.error('[chat-sse-v2] Exception:', error.message, error.stack);
         if (!res.headersSent) {
             res.status(500).json({
-                error: error.message,
-                type: error.constructor.name
+                error: error.message
             });
         }
     }
-};
+}
+
+module.exports = forwardSSE;
