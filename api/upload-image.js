@@ -99,7 +99,15 @@ module.exports = async (req, res) => {
             }
 
             const file = fileArray[0];
-            const fileBuffer = fs.readFileSync(file.path);
+            let fileBuffer;
+            
+            try {
+                fileBuffer = fs.readFileSync(file.path);
+            } catch (readError) {
+                console.error('File read error:', readError);
+                return res.status(500).json({ error: 'Failed to read uploaded file' });
+            }
+            
             const fileName = file.originalFilename;
             
             // 获取文件扩展名（不带点号）
@@ -130,7 +138,12 @@ module.exports = async (req, res) => {
                 const result = await uploadFileToCOS(fileBuffer, credentials);
 
                 // 清理临时文件
-                fs.unlinkSync(file.path);
+                try {
+                    fs.unlinkSync(file.path);
+                } catch (cleanupError) {
+                    // 忽略清理错误
+                    console.log('Cleanup skipped:', cleanupError.message);
+                }
 
                 return res.status(200).json({
                     success: true,
@@ -138,6 +151,12 @@ module.exports = async (req, res) => {
                 });
             } catch (uploadError) {
                 console.error('Upload error:', uploadError);
+                
+                // 尝试清理临时文件
+                try {
+                    fs.unlinkSync(file.path);
+                } catch (e) {}
+                
                 return res.status(500).json({ error: uploadError.message });
             }
         });
